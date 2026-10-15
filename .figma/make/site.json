@@ -1,0 +1,12 @@
+{
+  "title": "安心健康 (Xiaoan Health) - 心理健康与情绪陪伴",
+  "description": "心理健康与情绪疗愈陪伴平台，提供心理测评、能量工具、深度疗愈对话与身心舒缓练习。",
+  "language": "zh-CN",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
