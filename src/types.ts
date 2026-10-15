@@ -82,7 +82,14 @@ export interface ChatDialogItem {
   id: string
   role: 'user' | 'assistant'
   text: string
+  content?: string
   time: string
+  createdAt?: number
+  inputType?: 'text' | 'voice'
+  status?: 'sending' | 'sent' | 'error'
+  isMock?: boolean
   userId?: string
   sessionId?: string
+  audioUrl?: string
+  voiceId?: string
 }

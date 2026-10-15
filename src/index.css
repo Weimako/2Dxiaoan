@@ -1239,6 +1239,102 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(77,140,92,.3
 .reply-thinking { color: #588465; font-weight: 600; display: inline-flex; align-items: center; gap: .35rem; animation: pulseThinking 2s ease-in-out infinite; }
 @keyframes pulseThinking { 0%, 100% { opacity: .75; transform: scale(0.99); } 50% { opacity: 1; transform: scale(1.01); } }
 .chat-mascot { position: absolute; inset: 15% 24% 15%; display: grid; place-items: center; }
+
+/* 深度疗愈 - 请求异常与重试横幅 */
+.chat-error-banner {
+  position: absolute;
+  top: 4.8rem;
+  right: 1.5rem;
+  max-width: min(340px, 40vw);
+  padding: 0.75rem 1rem;
+  background: rgba(254, 242, 242, 0.96);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  border-radius: 16px;
+  box-shadow: 0 10px 28px rgba(185, 28, 28, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  z-index: 6;
+  animation: fadeInRight 0.25s ease both;
+}
+.chat-error-info {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  color: #991b1b;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+.chat-error-icon {
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+.chat-error-text {
+  font-weight: 500;
+}
+.chat-error-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+.chat-retry-btn {
+  padding: 0.25rem 0.65rem;
+  background: #dc2626;
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  min-height: auto;
+}
+.chat-retry-btn:hover {
+  background: #b91c1c;
+  transform: translateY(-1px);
+}
+.chat-error-close-btn {
+  padding: 0.2rem 0.45rem;
+  background: rgba(0, 0, 0, 0.06);
+  color: #7f1d1d;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  min-height: auto;
+}
+
+/* 思考与生成中的取消/停止按钮 */
+.chat-reply-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 0.45rem;
+  padding-top: 0.35rem;
+  border-top: 1px dashed rgba(79, 129, 87, 0.18);
+}
+.chat-stop-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #a84236;
+  background: rgba(220, 38, 38, 0.08);
+  border: 1px solid rgba(220, 38, 38, 0.25);
+  border-radius: 99px;
+  padding: 0.15rem 0.55rem;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  min-height: auto;
+}
+.chat-stop-btn:hover {
+  background: rgba(220, 38, 38, 0.18);
+  color: #991b1b;
+  transform: scale(1.02);
+}
+
 .chat-input-area { position: fixed; z-index: 3; left: 50%; bottom: 1rem; transform: translateX(-50%); width: min(540px, 90vw); display: grid; place-items: center; gap: .6rem; }.chat-input-area > div { width: 100%; display: flex; gap: .5rem; }.chat-input-area input { flex: 1; min-width: 0; border: 1px solid white; background: rgba(255,255,255,.8); padding: .85rem 1rem; border-radius: 16px; box-shadow: 0 8px 24px rgba(52,83,60,.08); }.chat-input-area input:focus { background: rgba(255,255,248,.96); box-shadow: 0 0 0 4px rgba(98,140,109,.14), 0 10px 28px rgba(52,83,60,.1); }.chat-input-area > div button { min-width: 64px; min-height: 52px; background: #70b172; color: white; border-radius: 16px; padding: .8rem 1.1rem; font-weight: 800; }
 .speak-button.listening i { animation: pulse 1.4s infinite; }.speak-button.listening { color: #4e8c5a; }
 @keyframes pulse { 50% { box-shadow: inset 0 0 0 3px rgba(255,255,255,.58), 0 0 0 10px rgba(103,177,112,.16); } }
@@ -1247,6 +1343,71 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(77,140,92,.3
 .said-count:active { transform: translateY(0); }
 .mood-chip { position: absolute; top: 9.6rem; right: 1.5rem; max-width: min(300px, 34vw); padding: .65rem 1.15rem; border-radius: 18px 18px 4px 18px; background: rgba(226, 245, 230, 0.95); border: 1px solid rgba(255, 255, 255, 0.95); box-shadow: 0 8px 24px rgba(45, 80, 56, 0.08); color: #1e422f; font-weight: 600; font-size: .92rem; line-height: 1.45; z-index: 4; word-break: break-word; animation: fadeInRight .25s ease both; box-sizing: border-box; transition: top .3s cubic-bezier(0.34, 1.2, 0.64, 1); }
 @keyframes fadeInRight { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+
+.mood-chip-listening {
+  background: rgba(238, 252, 242, 0.98);
+  border: 1.5px solid rgba(86, 172, 110, 0.55);
+  box-shadow: 0 10px 28px rgba(45, 80, 56, 0.14), 0 0 0 3px rgba(110, 205, 138, 0.22);
+}
+.live-speech-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.live-speech-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.15rem;
+}
+.live-speech-tag {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #2b7042;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  letter-spacing: 0.4px;
+}
+.live-speech-cancel-btn {
+  font-size: 0.72rem;
+  color: #557762;
+  padding: 0.1rem 0.45rem;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.05);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  min-height: auto;
+  border: none;
+}
+.live-speech-cancel-btn:hover {
+  color: #a83d31;
+  background: rgba(180, 50, 40, 0.1);
+}
+.live-speech-text {
+  min-height: 1.25rem;
+  line-height: 1.45;
+  word-break: break-word;
+}
+.live-speech-placeholder {
+  color: #6c8a77;
+  font-size: 0.85rem;
+  font-weight: 500;
+  font-style: italic;
+}
+.live-pulse-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #46a760;
+  animation: liveDotPulse 1.2s infinite ease-in-out;
+  display: inline-block;
+}
+@keyframes liveDotPulse {
+  0%, 100% { transform: scale(0.85); opacity: 0.6; }
+  50% { transform: scale(1.3); opacity: 1; box-shadow: 0 0 8px rgba(70, 167, 96, 0.6); }
+}
 
 /* 深度疗愈 - 小安音色选择面板 (无外框独立按钮) */
 .voice-selector-panel {
@@ -1407,6 +1568,32 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(77,140,92,.3
   transform: scale(1.05);
 }
 
+.voice-tts-status-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.45rem;
+  padding: 0.32rem 0.6rem;
+  background: rgba(255, 255, 255, 0.45);
+  border: 1px solid rgba(106, 175, 126, 0.3);
+  border-radius: 8px;
+  font-size: 0.68rem;
+  color: #2e593d;
+  line-height: 1.35;
+  box-shadow: 0 1px 4px rgba(46, 89, 61, 0.05);
+  backdrop-filter: blur(6px);
+}
+
+.voice-tts-status-badge .tts-status-icon {
+  font-size: 0.8rem;
+  flex-shrink: 0;
+}
+
+.voice-tts-status-badge .tts-status-text {
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
 .voice-switch-toast {
   position: absolute;
   left: 1.5rem;
@@ -1515,6 +1702,8 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(77,140,92,.3
 .chat-history-meta { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.25rem; }
 .history-num { font-size: 0.72rem; padding: 0.12rem 0.45rem; background: rgba(77, 133, 91, 0.14); color: #2e593d; border-radius: 99px; font-weight: 700; }
 .history-num.assistant-num { background: rgba(77, 140, 95, 0.24); color: #1f4f31; }
+.history-input-type { font-size: 0.68rem; padding: 0.1rem 0.38rem; background: rgba(215, 235, 222, 0.7); color: #2e593d; border-radius: 6px; font-weight: 600; }
+.history-mock-badge { font-size: 0.68rem; padding: 0.1rem 0.38rem; background: rgba(246, 238, 218, 0.95); color: #745b20; border: 1px solid rgba(190, 160, 90, 0.35); border-radius: 6px; font-weight: 600; }
 .history-sender { font-size: 0.76rem; color: #557761; }
 .history-time { font-size: 0.72rem; color: #728d7d; margin-left: auto; }
 .chat-history-header-actions { display: flex; align-items: center; gap: 0.6rem; }

@@ -67,10 +67,9 @@ export function Xiaoan2D({
 
   // 1. 严格判定是否真正处于说话状态：
   // 必须明确开启 enableTalkingAnimation，且处于真正的有效回复期（status === 'speaking' 或 isReplying/isSpeaking 为 true）
-  // 排除思考等待（thinking）和正面回正（turningToFront）阶段
   const isActuallyTalking =
     effectiveEnableTalking &&
-    (status === 'speaking' || ((isReplying || isSpeaking) && status !== 'turningToFront' && status !== 'thinking'))
+    (status === 'speaking' || isReplying || isSpeaking)
 
   // 招手临时动画状态
   const [isWaving, setIsWaving] = useState(false)

@@ -12,6 +12,7 @@ interface VoiceSelectorPanelProps {
   currentPlayingVoice?: VoiceProfileId | null
   onPreviewVoice?: (voiceId: VoiceProfileId) => void
   previewingVoice?: VoiceProfileId | null
+  isTtsConnected?: boolean
   className?: string
 }
 
@@ -22,6 +23,7 @@ export const VoiceSelectorPanel: React.FC<VoiceSelectorPanelProps> = ({
   currentPlayingVoice = null,
   onPreviewVoice,
   previewingVoice = null,
+  isTtsConnected = false,
   className = '',
 }) => {
   return (
@@ -92,6 +94,14 @@ export const VoiceSelectorPanel: React.FC<VoiceSelectorPanelProps> = ({
             </div>
           )
         })}
+      </div>
+      <div className="voice-tts-status-badge" role="note" title="当前尚未接入真实云端 TTS 接口，用户选取的音色偏好将保存并透传至后端">
+        <span className="tts-status-icon">🍃</span>
+        <span className="tts-status-text">
+          {isTtsConnected
+            ? '云端语音合成已就绪'
+            : '音色偏好已保存 · 接入真实语音合成服务后生效'}
+        </span>
       </div>
     </aside>
   )
