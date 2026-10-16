@@ -71,6 +71,7 @@ import {
   stopMediaStream,
 } from './services/microphoneService'
 import { MicrophonePermissionModal } from './components/MicrophonePermissionModal'
+import { WebmTransparencyDiagnostic } from './components/WebmTransparencyDiagnostic'
 
 function getUserIdFromName(userName: string): string {
   const clean = userName ? userName.trim() : ''
@@ -218,6 +219,7 @@ function Mascot({
   enableTalkingAnimation = false,
   allowTalking = false,
   allowWaving = true,
+  idlePlaybackRate,
   onClick,
 }: {
   size?: 'small' | 'medium' | 'large'
@@ -227,6 +229,7 @@ function Mascot({
   enableTalkingAnimation?: boolean
   allowTalking?: boolean
   allowWaving?: boolean
+  idlePlaybackRate?: number
   onClick?: () => void
 }) {
   return (
@@ -238,6 +241,7 @@ function Mascot({
         status={status}
         enableTalkingAnimation={enableTalkingAnimation || allowTalking}
         allowWaving={allowWaving}
+        idlePlaybackRate={idlePlaybackRate}
         onClick={onClick}
       />
     </div>
@@ -773,45 +777,80 @@ function Videos({
   onSelectVideo: (id: string) => void
 }) {
   const currentVideos = videoCatalog.filter((v) => v.category === selectedCategory)
+  const readyCount = videoCatalog.filter((v) => v.isReady).length
 
   return (
     <main className="screen">
       <BackButton onClick={() => navigate('tools')} />
-      <PageTitle subtitle="慢下来看一看，选一段温暖你的文字与画面。">心理视频库</PageTitle>
+      <PageTitle subtitle="精选 3 大心理疗愈主题，每部短片专注于一段微小的身心松弛练习。">心理视频库</PageTitle>
       <section className="video-layout">
-        <nav>
-          {videoCategories.map((item) => (
-            <button
-              className={selectedCategory === item ? 'active' : ''}
-              key={item}
-              onClick={() => onSelectCategory(item)}
-            >
-              {item}
-            </button>
-          ))}
+        {/* 精简的主题分类导航 */}
+        <nav aria-label="视频分类导航">
+          {videoCategories.map((item) => {
+            const count = videoCatalog.filter((v) => v.category === item).length
+            return (
+              <button
+                className={selectedCategory === item ? 'active' : ''}
+                key={item}
+                onClick={() => onSelectCategory(item)}
+              >
+                <span>{item}</span>
+                <small className="nav-item-count">{count}篇</small>
+              </button>
+            )
+          })}
         </nav>
+
         <div className="video-content">
-          <p>当前主题：<strong>{selectedCategory}</strong>（共 {currentVideos.length} 个疗愈短片）</p>
+          <div className="video-content-header">
+            <p>
+              当前精选主题：<strong>{selectedCategory}</strong>（共 {currentVideos.length} 部精选视频）
+            </p>
+            <span className="video-stats-pill">
+              全库 {videoCatalog.length} 部 · {readyCount} 部可播放 · {videoCatalog.length - readyCount} 部筹备中
+            </span>
+          </div>
+
           <div className="video-grid">
             {currentVideos.map((video) => (
-              <button key={video.id} onClick={() => onSelectVideo(video.id)}>
+              <button
+                key={video.id}
+                type="button"
+                className={`video-card-item ${video.isReady ? 'is-ready' : 'is-unready'}`}
+                onClick={() => onSelectVideo(video.id)}
+              >
                 <div
                   className="video-thumb"
                   style={{
-                    background: `linear-gradient(135deg, ${video.accentColor}33, ${video.accentColor}88)`,
+                    background: `linear-gradient(135deg, ${video.accentColor}33, ${video.accentColor}99)`,
                     display: 'grid',
                     placeItems: 'center',
                     fontSize: '1.4rem',
                     color: video.accentColor,
+                    position: 'relative',
                   }}
                 >
-                  ▶
+                  {video.isReady ? '▶' : '⏳'}
+                  <span
+                    className={`thumb-status-badge ${video.isReady ? 'badge-ready' : 'badge-pending'}`}
+                  >
+                    {video.isReady ? '可播放' : '筹备中'}
+                  </span>
                 </div>
-                <span>
-                  <strong>{video.title}</strong>
-                  <small>{video.sub}</small>
-                  <em>时长 {video.time} · {video.tags[0]}</em>
-                </span>
+                <div className="video-card-info">
+                  <div className="video-card-top-row">
+                    <strong>{video.title}</strong>
+                    <span className="video-card-time">{video.time}</span>
+                  </div>
+                  <small className="video-card-sub">{video.sub}</small>
+                  <div className="video-card-tags">
+                    {video.tags.map((t) => (
+                      <span key={t} className="video-card-tag">
+                        #{t}
+                      </span>
+                    ))}
+                  </div>
+                </div>
               </button>
             ))}
           </div>
@@ -2631,6 +2670,9 @@ export default function App() {
           onResetSession={() => handleLogout(true)}
         />
       )}
+
+      {/* 临时开发诊断抽屉（按 Alt+D 或屏幕左下角微标可随时打开） */}
+      <WebmTransparencyDiagnostic />
     </div>
   )
 }

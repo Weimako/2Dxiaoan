@@ -43,6 +43,14 @@ export type IconName =
   | 'calendar'
   | 'user'
 
+export interface VideoSourceInfo {
+  author?: string
+  license: string
+  sourceUrl?: string
+  confirmDate?: string
+  notes?: string
+}
+
 export interface VideoItem {
   id: string
   title: string
@@ -54,6 +62,16 @@ export interface VideoItem {
   suitable: string
   accentColor: string
   watchedCount?: number
+  /** 本地视频实际播放资源路径 (如 /videos/psychology/breathe_calm.mp4) */
+  videoUrl?: string
+  /** 备用视频播放路径 */
+  fallbackVideoUrl?: string
+  /** 封面海报图路径 */
+  posterUrl?: string
+  /** 视频资源是否已在项目中就绪可用 (false 则提示内容准备中) */
+  isReady?: boolean
+  /** 版权许可与素材来源记录 */
+  sourceInfo?: VideoSourceInfo
 }
 
 export interface MoodEntry {

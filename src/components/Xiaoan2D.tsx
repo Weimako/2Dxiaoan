@@ -2,9 +2,9 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import xiaoanFrontImg from '../assets/xiaoan/images/xiaoan_front.png'
 import xiaoanLeftImg from '../assets/xiaoan/images/xiaoan_left40.png'
 import xiaoanRightImg from '../assets/xiaoan/images/xiaoan_right40.png'
-import xiaoanIdleVideo from '../assets/xiaoan/videos/xiaoan_idle.mp4'
-import xiaoanTalkVideo from '../assets/xiaoan/videos/xiaoan_talk.mp4'
-import xiaoanWaveVideo from '../assets/xiaoan/videos/xiaoan_wave.mp4'
+import xiaoanIdleVideo from '../assets/xiaoan/videos/xiaoan_idle.webm'
+import xiaoanTalkVideo from '../assets/xiaoan/videos/xiaoan_talk.webm'
+import xiaoanWaveVideo from '../assets/xiaoan/videos/xiaoan_wave.webm'
 import mascotFallbackImg from '../assets/mascot-scene.png'
 import { XiaoanChatStatus } from '../services/chatService'
 
@@ -30,6 +30,8 @@ export interface Xiaoan2DProps {
   allowIdleVideo?: boolean
   /** 是否允许点击触发招手动画，默认为 true */
   allowWaving?: boolean
+  /** 待机视频慢速呼吸播放速率，初始默认为 0.65 */
+  idlePlaybackRate?: number
   /** 交互点击事件 */
   onClick?: () => void
   /** 自定义类名 */
@@ -39,15 +41,16 @@ export interface Xiaoan2DProps {
 }
 
 /**
- * 统一 2D 小安角色展示组件（第三阶段：AI 回复与说话视频严格联动）
+ * 统一 2D 小安角色展示组件（透明 WebM 视频驱动与状态机）
  *
  * 核心规范与优先级：
  * 1. 严格动画优先级：talking > waving > idle。
- *    - 当 talking 为 true 时，严禁切换到 idle.mp4、严禁播放 wave.mp4、严禁被点击或鼠标互动打断、严禁一轮播完自动切回待机。
+ *    - 当 talking 为 true 时，严禁切换到 idle.webm、严禁播放 wave.webm、严禁被点击或鼠标互动打断、严禁一轮播完自动切回待机。
  *    - 用户在说话期间点击小安，保留业务点击回调，但严格忽略本次招手触发，不播放、不排队。
  * 2. 页面隔离机制：由 enableTalkingAnimation / allowTalking 显式控制（默认 false），其他页面绝对不会播放说话视频。
  * 3. 稳定挂载架构：视频元素常驻 DOM，通过受控的 play/pause/currentTime 与 CSS 交叉淡入淡出调度，避免频繁卸载与黑屏跳变。
  * 4. 优雅降级与预加载：在视频加载就绪前或播放失败时，以同一角色静态图片无缝兜底；当 AI 说话开始后持续循环，直至业务层确认整轮回复结束。
+ * 5. 播放速率控制：idle 待机默认以 0.65 慢速播放呈现自然呼吸感，talking 与 waving 保持 1.0 标准速率。
  */
 export function Xiaoan2D({
   size = 'large',
@@ -58,6 +61,7 @@ export function Xiaoan2D({
   allowTalking = false,
   allowIdleVideo = true,
   allowWaving = true,
+  idlePlaybackRate = 0.65,
   onClick,
   className = '',
   style,
@@ -73,7 +77,6 @@ export function Xiaoan2D({
 
   // 招手临时动画状态
   const [isWaving, setIsWaving] = useState(false)
-  const waveTimerRef = useRef<number | null>(null)
 
   // 视频加载及解码异常监控
   const [idleError, setIdleError] = useState(false)
@@ -103,13 +106,9 @@ export function Xiaoan2D({
     activeState = 'idle'
   }
 
-  // 招手完成回调
+  // 招手完成回调（以视频 ended 事件为准，杜绝任何硬编码的 1-2 秒 timeout 截断）
   const finishWaving = useCallback(() => {
     setIsWaving(false)
-    if (waveTimerRef.current !== null) {
-      window.clearTimeout(waveTimerRef.current)
-      waveTimerRef.current = null
-    }
   }, [])
 
   // 3. 说话状态具有不可抢占特权：一旦进入说话，立刻取消并终结可能残留的招手状态
@@ -128,42 +127,39 @@ export function Xiaoan2D({
       onClick()
     }
 
-    // 核心约束：说话期间严禁被招手抢占或排队触发，直接忽略
+    // 核心约束 1：说话期间严禁被招手抢占或排队触发，直接忽略
     if (isActuallyTalking) {
       return
     }
 
-    // 非说话状态下且允许招手时，触发单次招手动作
-    if (allowWaving && !isWaving) {
+    // 核心约束 2：waving 播放期间再次点击，默认忽略重复点击，避免重复排队或重新启动招手
+    if (isWaving) {
+      return
+    }
+
+    // 核心约束 3：非说话状态且允许招手时，触发单次完整招手动作
+    if (allowWaving) {
       setIsWaving(true)
       setWaveError(false)
-
-      const waveEl = waveVideoRef.current
-      if (waveEl && !waveError) {
-        waveEl.currentTime = 0
-        waveEl.play().catch((err) => {
-          console.warn('[Xiaoan2D] Wave video play prevented:', err.message)
-        })
-      }
-
-      // 超时安全兜底（如果视频由于空文件未能触发 onEnded，2.4 秒后自动复位回 idle）
-      if (waveTimerRef.current !== null) {
-        window.clearTimeout(waveTimerRef.current)
-      }
-      waveTimerRef.current = window.setTimeout(() => {
-        finishWaving()
-      }, 2400)
     }
   }
 
-  // 5. 稳定挂载下的受控播放与暂停调度
+  // 保持待机慢速呼吸速率同步
+  useEffect(() => {
+    const idleEl = idleVideoRef.current
+    if (idleEl) {
+      idleEl.playbackRate = idlePlaybackRate
+    }
+  }, [idlePlaybackRate])
+
+  // 5. 稳定挂载下的受控播放与暂停调度（单一事实来源：由 activeState 驱动）
   useEffect(() => {
     const idleEl = idleVideoRef.current
     const talkEl = talkVideoRef.current
     const waveEl = waveVideoRef.current
 
     if (activeState === 'talking') {
-      // 停止待机与招手，确保说话视频循环播放
+      // 停止待机与招手，确保当前只有说话视频播放
       if (idleEl && !idleEl.paused) {
         idleEl.pause()
       }
@@ -171,14 +167,17 @@ export function Xiaoan2D({
         waveEl.pause()
       }
       if (talkEl && !talkError) {
-        // 重置时间戳并循环播放说话视频
+        talkEl.playbackRate = 1.0
         talkEl.currentTime = 0
         talkEl.play().catch((err) => {
           console.warn('[Xiaoan2D] Talk video play prevented or pending:', err.message)
+          if (err.name === 'NotSupportedError') {
+            setTalkError(true)
+          }
         })
       }
     } else if (activeState === 'waving') {
-      // 停止待机与说话，播放单次招手
+      // 停止待机与说话，招手视频从第 0 秒开始完整播放
       if (idleEl && !idleEl.paused) {
         idleEl.pause()
       }
@@ -186,13 +185,19 @@ export function Xiaoan2D({
         talkEl.pause()
       }
       if (waveEl && !waveError) {
+        waveEl.playbackRate = 1.0
         waveEl.currentTime = 0
         waveEl.play().catch((err) => {
           console.warn('[Xiaoan2D] Wave video play prevented:', err.message)
+          // 播放被浏览器拦截或解码失败时，安全退回 idle，不留下卡死状态
+          setIsWaving(false)
+          if (err.name === 'NotSupportedError') {
+            setWaveError(true)
+          }
         })
       }
     } else {
-      // 恢复待机：停止说话与招手，恢复待机视频循环
+      // 恢复待机：停止说话与招手，恢复待机视频从头循环播放
       if (talkEl && !talkEl.paused) {
         talkEl.pause()
       }
@@ -200,19 +205,28 @@ export function Xiaoan2D({
         waveEl.pause()
       }
       if (idleEl && !idleError && allowIdleVideo) {
+        idleEl.playbackRate = idlePlaybackRate
+        // 恢复 idle 时从头开始播放
+        idleEl.currentTime = 0
         idleEl.play().catch((err) => {
           console.warn('[Xiaoan2D] Idle video play prevented or pending:', err.message)
+          if (err.name === 'NotSupportedError') {
+            setIdleError(true)
+          }
         })
       }
     }
-  }, [activeState, talkError, idleError, waveError, allowIdleVideo])
+  }, [activeState, talkError, idleError, waveError, allowIdleVideo, idlePlaybackRate])
 
-  // 组件卸载清理
+  // 组件卸载清理：暂停所有可能在播放的视频，防止切页后后台播放
   useEffect(() => {
     return () => {
-      if (waveTimerRef.current !== null) {
-        window.clearTimeout(waveTimerRef.current)
-      }
+      const idleEl = idleVideoRef.current
+      const talkEl = talkVideoRef.current
+      const waveEl = waveVideoRef.current
+      if (idleEl && !idleEl.paused) idleEl.pause()
+      if (talkEl && !talkEl.paused) talkEl.pause()
+      if (waveEl && !waveEl.paused) waveEl.pause()
     }
   }, [])
 
@@ -224,6 +238,19 @@ export function Xiaoan2D({
     (activeState === 'idle' && idleReady && !idleError && allowIdleVideo)
 
   const showFallbackImage = !isCurrentVideoReady
+
+  const logVideoState = useCallback((track: string, el: HTMLVideoElement | null) => {
+    if (!el) return
+    console.log(`[Xiaoan2D Runtime Log] ${track}:`, {
+      currentSrc: el.currentSrc || el.src,
+      videoWidth: el.videoWidth,
+      videoHeight: el.videoHeight,
+      readyState: el.readyState,
+      paused: el.paused,
+      playbackRate: el.playbackRate,
+      error: el.error ? { code: el.error.code, message: el.error.message } : null,
+    })
+  }, [])
 
   return (
     <div
@@ -240,7 +267,7 @@ export function Xiaoan2D({
       }}
     >
       <div className={`xiaoan-2d-stage state-${activeState}`}>
-        {/* 1. 待机视频：常驻挂载、预加载、静音循环 */}
+        {/* 1. 待机视频：常驻挂载、预加载、静音循环、可配置 0.65 呼吸慢速 */}
         {allowIdleVideo && (
           <video
             ref={idleVideoRef}
@@ -253,15 +280,28 @@ export function Xiaoan2D({
             playsInline
             loop
             preload="auto"
-            onCanPlay={() => setIdleReady(true)}
-            onError={() => {
+            onLoadedMetadata={(e) => logVideoState('idle', e.currentTarget)}
+            onPlay={() => {
+              if (idleVideoRef.current) {
+                idleVideoRef.current.playbackRate = idlePlaybackRate
+              }
+            }}
+            onCanPlay={(e) => {
+              if (idleVideoRef.current) {
+                idleVideoRef.current.playbackRate = idlePlaybackRate
+              }
+              setIdleReady(true)
+              logVideoState('idle', e.currentTarget)
+            }}
+            onError={(e) => {
               setIdleError(true)
               setIdleReady(false)
+              logVideoState('idle', e.currentTarget)
             }}
           />
         )}
 
-        {/* 2. 说话视频：仅在显式开启说话动画页面挂载，静音循环 */}
+        {/* 2. 说话视频：仅在显式开启说话动画页面挂载，静音循环，1.0 正常速度 */}
         {effectiveEnableTalking && (
           <video
             ref={talkVideoRef}
@@ -273,15 +313,28 @@ export function Xiaoan2D({
             playsInline
             loop
             preload="auto"
-            onCanPlay={() => setTalkReady(true)}
-            onError={() => {
+            onLoadedMetadata={(e) => logVideoState('talk', e.currentTarget)}
+            onPlay={() => {
+              if (talkVideoRef.current) {
+                talkVideoRef.current.playbackRate = 1.0
+              }
+            }}
+            onCanPlay={(e) => {
+              if (talkVideoRef.current) {
+                talkVideoRef.current.playbackRate = 1.0
+              }
+              setTalkReady(true)
+              logVideoState('talk', e.currentTarget)
+            }}
+            onError={(e) => {
               setTalkError(true)
               setTalkReady(false)
+              logVideoState('talk', e.currentTarget)
             }}
           />
         )}
 
-        {/* 3. 招手视频：常驻挂载、单次播放、播放完毕切回待机 */}
+        {/* 3. 招手视频：常驻挂载、单次播放、播放完毕切回待机，1.0 正常速度 */}
         {allowWaving && (
           <video
             ref={waveVideoRef}
@@ -292,15 +345,28 @@ export function Xiaoan2D({
             muted
             playsInline
             preload="auto"
-            onCanPlay={() => setWaveReady(true)}
+            onLoadedMetadata={(e) => logVideoState('wave', e.currentTarget)}
+            onPlay={() => {
+              if (waveVideoRef.current) {
+                waveVideoRef.current.playbackRate = 1.0
+              }
+            }}
+            onCanPlay={(e) => {
+              if (waveVideoRef.current) {
+                waveVideoRef.current.playbackRate = 1.0
+              }
+              setWaveReady(true)
+              logVideoState('wave', e.currentTarget)
+            }}
             onEnded={() => {
               if (activeState === 'waving') {
                 finishWaving()
               }
             }}
-            onError={() => {
+            onError={(e) => {
               setWaveError(true)
               setWaveReady(false)
+              logVideoState('wave', e.currentTarget)
               if (activeState === 'waving') {
                 finishWaving()
               }

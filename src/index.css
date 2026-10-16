@@ -188,6 +188,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(77,140,92,.3
   outline: none;
   user-select: none;
   -webkit-user-select: none;
+  background: transparent !important;
 }
 
 .xiaoan-2d-stage {
@@ -198,6 +199,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(77,140,92,.3
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  background: transparent !important;
 }
 
 .xiaoan-2d-media {
@@ -213,7 +215,12 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(77,140,92,.3
   transform: none !important;
   left: 0 !important;
   top: 0 !important;
+  background: transparent !important;
   transition: opacity 0.25s ease-out;
+}
+
+.xiaoan-2d-video {
+  background: transparent !important;
 }
 
 .xiaoan-2d-image-fallback-container {
@@ -6853,5 +6860,433 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(77,140,92,.3
 .app[data-theme="calm"] .live-speech-vol-bar {
   background: #75cca0;
 }
+
+/* ==========================================================================
+   精选心理视频库与全功能播放器增强样式
+   ========================================================================== */
+
+.video-content-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+
+.video-content-header p {
+  margin: 0;
+  color: #3b6348;
+  font-size: 0.95rem;
+}
+
+.video-stats-pill {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.25rem 0.75rem;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(85, 140, 100, 0.25);
+  border-radius: 999px;
+  color: #426e50;
+}
+
+.nav-item-count {
+  margin-left: 0.4rem;
+  font-size: 0.75rem;
+  opacity: 0.75;
+  font-weight: normal;
+}
+
+/* 视频卡片项 */
+.video-card-item {
+  position: relative;
+  padding: 0.85rem;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.95);
+  border-radius: 20px;
+  display: flex;
+  text-align: left;
+  align-items: flex-start;
+  gap: 1rem;
+  box-shadow: 0 4px 18px rgba(45, 80, 56, 0.06);
+  transition: transform 0.22s ease, box-shadow 0.22s ease, background-color 0.22s ease;
+  cursor: pointer;
+}
+
+.video-card-item:hover {
+  transform: translateY(-3px);
+  background: #ffffff;
+  box-shadow: 0 10px 28px rgba(45, 80, 56, 0.12);
+}
+
+.video-thumb {
+  width: 104px;
+  height: 94px;
+  border-radius: 16px;
+  overflow: hidden;
+  flex: none;
+  position: relative;
+}
+
+.thumb-status-badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 6px;
+  line-height: 1.2;
+}
+
+.thumb-status-badge.badge-ready {
+  background: rgba(43, 107, 65, 0.88);
+  color: #ffffff;
+  backdrop-filter: blur(4px);
+}
+
+.thumb-status-badge.badge-pending {
+  background: rgba(180, 115, 30, 0.88);
+  color: #ffffff;
+  backdrop-filter: blur(4px);
+}
+
+.video-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.video-card-top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.video-card-top-row strong {
+  font-size: 1.05rem;
+  color: var(--forest-950);
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.video-card-time {
+  font-size: 0.75rem;
+  color: #557262;
+  font-weight: 700;
+  flex: none;
+}
+
+.video-card-sub {
+  color: #557263;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.video-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.2rem;
+}
+
+.video-card-tag {
+  font-size: 0.72rem;
+  color: #4a7558;
+  background: rgba(85, 140, 100, 0.1);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+/* 播放器视口与真实 video */
+.video-viewport {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  background: #0d1e16;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.video-native-element {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #0d1e16;
+  display: block;
+}
+
+.video-loading-spinner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(0, 0, 0, 0.75);
+  color: #d8eed3;
+  padding: 0.6rem 1rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  backdrop-filter: blur(6px);
+  z-index: 10;
+}
+
+.spinner-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #6ece91;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* 未就绪 / 错误兜底舞台 */
+.video-unready-stage {
+  width: 100%;
+  height: 100%;
+  padding: 2.2rem 1.6rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  background: radial-gradient(circle at 50% 40%, rgba(65, 105, 80, 0.4) 0%, rgba(18, 38, 28, 0.95) 100%);
+  color: #ffffff;
+}
+
+.unready-icon {
+  font-size: 2.6rem;
+  margin-bottom: 0.4rem;
+}
+
+.unready-badge {
+  font-size: 0.78rem;
+  font-weight: 800;
+  padding: 0.25rem 0.8rem;
+  background: rgba(220, 150, 40, 0.35);
+  border: 1px solid rgba(240, 180, 70, 0.65);
+  color: #ffdda0;
+  border-radius: 999px;
+  margin-bottom: 0.6rem;
+}
+
+.unready-badge.error-badge {
+  background: rgba(220, 70, 60, 0.35);
+  border-color: rgba(240, 90, 80, 0.65);
+  color: #ffb5b0;
+}
+
+.unready-title {
+  margin: 0 0 0.4rem;
+  font-size: 1.35rem;
+  font-weight: 800;
+}
+
+.unready-tip {
+  margin: 0 0 1.2rem;
+  font-size: 0.88rem;
+  line-height: 1.6;
+  max-width: 440px;
+  opacity: 0.88;
+  color: #d8e5dc;
+}
+
+.unready-actions {
+  display: flex;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.unready-btn {
+  font-size: 0.85rem;
+  padding: 0.5rem 1.2rem;
+  border-radius: 999px;
+  min-height: 40px;
+}
+
+/* 控制栏增强：音量与全屏 */
+.video-volume-control {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.video-volume-btn, .video-fullscreen-btn {
+  background: none;
+  border: none;
+  padding: 0.2rem 0.4rem;
+  cursor: pointer;
+  font-size: 1rem;
+  min-height: 38px;
+  display: grid;
+  place-items: center;
+  color: #486955;
+  border-radius: 6px;
+}
+
+.video-volume-btn:hover, .video-fullscreen-btn:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.video-volume-slider {
+  width: 60px;
+  height: 4px;
+  accent-color: #5d9b68;
+  cursor: pointer;
+}
+
+/* 详情页药丸标签 */
+.video-theme-pill-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+
+.video-category-pill {
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.2rem 0.65rem;
+  background: rgba(85, 140, 100, 0.15);
+  color: #2e5c3e;
+  border-radius: 999px;
+}
+
+.video-ready-pill {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+}
+
+.video-ready-pill.ready {
+  background: rgba(65, 160, 95, 0.18);
+  color: #1f6b39;
+}
+
+.video-ready-pill.unready {
+  background: rgba(220, 140, 30, 0.16);
+  color: #8c5710;
+}
+
+/* 授权声明详情卡片 */
+.video-license-note {
+  background: rgba(255, 255, 255, 0.45);
+  border: 1px dashed rgba(85, 140, 100, 0.35);
+  padding: 0.75rem 0.9rem;
+  border-radius: 12px;
+}
+
+.video-license-detail {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: #5a7566;
+}
+
+.related-status-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.2rem;
+  flex: none;
+}
+
+.status-tag {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.status-tag.ready {
+  background: #d8eed3;
+  color: #275239;
+}
+
+.status-tag.pending {
+  background: #faeed3;
+  color: #7a5015;
+}
+
+/* 舒缓深色模式 (data-theme="calm") 视频页面高亮适配 */
+.app[data-theme="calm"] .video-card-item {
+  background: rgba(30, 52, 42, 0.88);
+  border: 1.5px solid rgba(135, 210, 165, 0.4);
+  color: #eef6ee;
+}
+
+.app[data-theme="calm"] .video-card-item:hover {
+  background: rgba(38, 64, 52, 0.98);
+  border-color: rgba(180, 245, 205, 0.75);
+}
+
+.app[data-theme="calm"] .video-card-top-row strong {
+  color: #eef6ee;
+}
+
+.app[data-theme="calm"] .video-card-sub {
+  color: #9cb5a3;
+}
+
+.app[data-theme="calm"] .video-card-tag {
+  background: rgba(110, 195, 140, 0.2);
+  color: #a8e5be;
+}
+
+.app[data-theme="calm"] .video-stats-pill {
+  background: rgba(22, 40, 31, 0.9);
+  border-color: rgba(135, 210, 165, 0.4);
+  color: #9cb5a3;
+}
+
+.app[data-theme="calm"] .video-category-pill {
+  background: rgba(110, 195, 140, 0.2);
+  color: #a8e5be;
+}
+
+.app[data-theme="calm"] .video-volume-btn,
+.app[data-theme="calm"] .video-fullscreen-btn {
+  color: #cbd8c8;
+}
+
+.app[data-theme="calm"] .video-license-note {
+  background: rgba(22, 40, 31, 0.65);
+  border-color: rgba(135, 210, 165, 0.35);
+}
+
+.app[data-theme="calm"] .video-license-detail {
+  color: #9cb5a3;
+}
+
+/* 响应式调整 */
+@media (max-width: 900px) {
+  .video-detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 
 
