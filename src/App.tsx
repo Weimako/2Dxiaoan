@@ -23,10 +23,12 @@ import { Xiaoan2D } from './components/Xiaoan2D'
 import {
   XiaoanChatStatus,
   requestXiaoanReply,
-  type AudioInputMode,
-  getAudioInputMode,
-  setAudioInputMode,
 } from './services/chatService'
+import {
+  voiceCaptureService,
+  type VoiceCaptureStatus,
+} from './services/voiceCaptureService'
+import { getPlatformCapabilities } from './services/voicePlatformAdapter'
 import { assistantAudioService } from './services/assistantAudioService'
 import { useTheme } from './context/ThemeContext'
 import { AssessmentHub } from './components/AssessmentHub'
@@ -61,6 +63,14 @@ import {
   stopSpeaking,
 } from './services/voiceService'
 import { VoiceSelectorPanel } from './components/VoiceSelectorPanel'
+import {
+  type MicrophoneErrorInfo,
+  type ActiveMicrophoneSession,
+  requestMicrophoneStream,
+  startMicrophoneSession,
+  stopMediaStream,
+} from './services/microphoneService'
+import { MicrophonePermissionModal } from './components/MicrophonePermissionModal'
 
 function getUserIdFromName(userName: string): string {
   const clean = userName ? userName.trim() : ''
@@ -859,7 +869,6 @@ function Chat({
   // 真实 AI 回复音频与服务接入状态
   const [isAudioPlaying, setIsAudioPlaying] = useState<boolean>(false)
   const [chatError, setChatError] = useState<{ message: string; prompt: string } | null>(null)
-  const [audioInputMode, setAudioInputModeState] = useState<AudioInputMode>(() => getAudioInputMode())
 
   // 监听真实回复音频播放状态变更
   useEffect(() => {
@@ -943,21 +952,10 @@ function Chat({
     return () => window.clearInterval(timer)
   }, [status])
 
-  // Cleanup on unmount: safely abort any pending AI stream, voice recognition, and stop speaking
+  // Cleanup on unmount: safely abort any pending AI stream, voice capture, and stop speaking
   useEffect(() => {
     return () => {
-      isListeningIntentRef.current = false
-      isUserStoppingVoiceRef.current = false
-      if (restartTimerRef.current !== null) {
-        window.clearTimeout(restartTimerRef.current)
-        restartTimerRef.current = null
-      }
-      if (chatRecognitionRef.current) {
-        try {
-          chatRecognitionRef.current.abort()
-        } catch {}
-        chatRecognitionRef.current = null
-      }
+      voiceCaptureService.release()
       abortControllerRef.current?.abort()
       assistantAudioService.stopAssistantAudio()
       activeVoicePlaybackRef.current?.stop()
@@ -1020,7 +1018,7 @@ function Chat({
           setReplyText('')
           setChatError(null)
         },
-        onStreamStart: (_full, _isMock, audioUrl) => {
+        onStreamStart: (_fullResponse?: string, audioUrl?: string) => {
           setReplyText('')
           if (audioUrl) {
             assistantAudioService.playAssistantAudio(audioUrl, {
@@ -1043,7 +1041,7 @@ function Chat({
         onStreamChunk: (_chunk, accumulated) => {
           setReplyText(accumulated)
         },
-        onStreamEnd: (fullResponse, isMock = true, audioUrl) => {
+        onStreamEnd: (fullResponse, audioUrl) => {
           setReplyText(fullResponse)
           const now = new Date()
           const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
@@ -1059,7 +1057,6 @@ function Chat({
               createdAt: Date.now(),
               inputType: 'text',
               status: 'sent',
-              isMock,
               audioUrl,
               voiceId: voiceToUse,
               userId,
@@ -1113,12 +1110,11 @@ function Chat({
         userId,
         sessionId,
         voiceProfileId: voiceToUse,
-        audioInputMode,
       }
     )
 
     abortControllerRef.current = controller
-  }, [selectedVoice, userId, sessionId, audioInputMode])
+  }, [selectedVoice, userId, sessionId])
 
   // 重试发送上一条失败请求
   const handleRetry = useCallback(() => {
@@ -1128,58 +1124,46 @@ function Chat({
     triggerAiResponse(retryPrompt)
   }, [chatError, triggerAiResponse])
 
-  // Voice recognition states & references for Chat
-  const chatRecognitionRef = useRef<any>(null)
-  const isListeningIntentRef = useRef<boolean>(false)
-  const isUserStoppingVoiceRef = useRef<boolean>(false)
+  // Voice recognition & real microphone states & references for Chat
   const isSubmittingRef = useRef<boolean>(false)
-  const restartTimerRef = useRef<number | null>(null)
-  const accumulatedPreviousFinalRef = useRef<string>('')
-  const sessionFinalRef = useRef<string>('')
-  const interimTranscriptRef = useRef<string>('')
+  const recordingTimerRef = useRef<number | null>(null)
   const [liveVoiceText, setLiveVoiceText] = useState<string>('')
+  const [liveVolume, setLiveVolume] = useState<number>(0)
+  const [recordingSeconds, setRecordingSeconds] = useState<number>(0)
   const [voiceInputState, setVoiceInputState] = useState<'idle' | 'listening' | 'recognizing' | 'error'>('idle')
+  const [micError, setMicError] = useState<MicrophoneErrorInfo | null>(null)
 
-  // Stop active speech recognition safely
-  const stopVoiceRecognition = useCallback(() => {
-    isUserStoppingVoiceRef.current = true
-    isListeningIntentRef.current = false
-    if (restartTimerRef.current !== null) {
-      window.clearTimeout(restartTimerRef.current)
-      restartTimerRef.current = null
+  // 释放所有正在占用的麦克风硬件流与音频资源（防止红点常驻或硬件被占）
+  const releaseAllAudioResources = useCallback(() => {
+    if (recordingTimerRef.current !== null) {
+      window.clearInterval(recordingTimerRef.current)
+      recordingTimerRef.current = null
     }
-    if (chatRecognitionRef.current) {
-      try {
-        chatRecognitionRef.current.stop()
-      } catch (err) {
-        console.warn('Speech recognition stop error:', err)
-      }
-    }
+    voiceCaptureService.release()
+    setLiveVolume(0)
+    setRecordingSeconds(0)
   }, [])
 
   // Cancel/abort speech recognition without submitting
   const cancelVoiceRecognition = useCallback(() => {
-    isListeningIntentRef.current = false
-    isUserStoppingVoiceRef.current = false
-    if (restartTimerRef.current !== null) {
-      window.clearTimeout(restartTimerRef.current)
-      restartTimerRef.current = null
+    if (recordingTimerRef.current !== null) {
+      window.clearInterval(recordingTimerRef.current)
+      recordingTimerRef.current = null
     }
-    if (chatRecognitionRef.current) {
-      try {
-        chatRecognitionRef.current.abort()
-      } catch (err) {
-        console.warn('Speech recognition abort error:', err)
-      }
-      chatRecognitionRef.current = null
-    }
-    accumulatedPreviousFinalRef.current = ''
-    sessionFinalRef.current = ''
-    interimTranscriptRef.current = ''
+    voiceCaptureService.cancel()
     setLiveVoiceText('')
+    setLiveVolume(0)
+    setRecordingSeconds(0)
     setVoiceInputState('idle')
     setStatus('idle')
   }, [])
+
+  // 组件卸载时安全释放麦克风资源
+  useEffect(() => {
+    return () => {
+      releaseAllAudioResources()
+    }
+  }, [releaseAllAudioResources])
 
   // 【核心统一提交流程】：统一文字输入与语音输入的数据流转
   const submitUserMessage = useCallback(
@@ -1203,19 +1187,8 @@ function Chat({
       }
       isSubmittingRef.current = true
 
-      // 若处于语音识别状态，安全终止
-      isListeningIntentRef.current = false
-      isUserStoppingVoiceRef.current = false
-      if (restartTimerRef.current !== null) {
-        window.clearTimeout(restartTimerRef.current)
-        restartTimerRef.current = null
-      }
-      if (chatRecognitionRef.current) {
-        try {
-          chatRecognitionRef.current.abort()
-        } catch {}
-        chatRecognitionRef.current = null
-      }
+      // 若处于语音采集状态，安全终止并释放音频流
+      releaseAllAudioResources()
 
       const now = new Date()
       const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
@@ -1256,144 +1229,95 @@ function Chat({
         isSubmittingRef.current = false
       }, 100)
     },
-    [status, userId, sessionId, triggerAiResponse]
+    [status, userId, sessionId, triggerAiResponse, releaseAllAudioResources]
   )
 
-  // Start a recognition session (supports continuous listening across pauses)
-  const startRecognitionSession = useCallback(() => {
-    const SpeechRecognition =
-      (typeof window !== 'undefined' &&
-        ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition)) ||
-      null
-
-    if (!SpeechRecognition) {
-      showVoiceToast('当前浏览器暂不支持语音识别，请直接在下方输入文字交流 🍃')
-      setStatus('idle')
-      setVoiceInputState('idle')
-      isListeningIntentRef.current = false
-      return
+  // 停止录音、释放硬件轨道并提交结果
+  const stopVoiceRecordingAndSubmit = useCallback(async () => {
+    if (recordingTimerRef.current !== null) {
+      window.clearInterval(recordingTimerRef.current)
+      recordingTimerRef.current = null
     }
 
-    try {
-      const rec = new SpeechRecognition()
-      rec.lang = 'zh-CN'
-      rec.continuous = true
-      rec.interimResults = true
-      rec.maxAlternatives = 1
+    setVoiceInputState('idle')
+    const recResult = await voiceCaptureService.stop()
+    setLiveVolume(0)
+    setRecordingSeconds(0)
 
-      rec.onstart = () => {
-        setStatus('listening')
-        setVoiceInputState('listening')
-      }
-
-      rec.onresult = (event: any) => {
-        let interim = ''
-        let currentFinal = ''
-        for (let i = 0; i < event.results.length; ++i) {
-          const res = event.results[i]
-          if (res.isFinal) {
-            currentFinal += res[0].transcript
-          } else {
-            interim += res[0].transcript
-          }
-        }
-        sessionFinalRef.current = currentFinal
-        interimTranscriptRef.current = interim
-        const combined = (accumulatedPreviousFinalRef.current + currentFinal + interim).trim()
-        setLiveVoiceText(combined)
-        if (combined) {
-          setVoiceInputState('recognizing')
-          // 语音识别的同时实时同步填入输入框，实现所说即所见与用户确认/修改能力
-          setText(combined)
-        }
-      }
-
-      rec.onerror = (event: any) => {
-        console.warn('Speech recognition error event:', event.error)
-        if (event.error === 'no-speech') {
-          // Normal pause in speech. Do not abort session if user is still in listening mode.
-          return
-        }
-
-        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-          isListeningIntentRef.current = false
-          showVoiceToast('麦克风权限未开启，请在浏览器中允许麦克风访问或使用文字输入')
-          setStatus('idle')
-          setVoiceInputState('error')
-          setLiveVoiceText('')
-          return
-        }
-
-        if (event.error === 'audio-capture') {
-          isListeningIntentRef.current = false
-          showVoiceToast('未检测到可用的麦克风录音设备，请检查音频输入')
-          setStatus('idle')
-          setVoiceInputState('error')
-          setLiveVoiceText('')
-          return
-        }
-
-        if (event.error === 'network') {
-          isListeningIntentRef.current = false
-          showVoiceToast('语音识别网络连接受阻，建议直接使用文字输入')
-          setStatus('idle')
-          setVoiceInputState('error')
-          setLiveVoiceText('')
-          return
-        }
-
-        if (event.error !== 'aborted') {
-          showVoiceToast(`语音识别遇到波折（${event.error}），请重试或写字`)
-          isListeningIntentRef.current = false
-          setStatus('idle')
-          setVoiceInputState('idle')
-          setLiveVoiceText('')
-        }
-      }
-
-      rec.onend = () => {
-        chatRecognitionRef.current = null
-        if (isUserStoppingVoiceRef.current) {
-          // 用户显式点击了「完成说话」按钮
-          const fullSaid = (
-            accumulatedPreviousFinalRef.current +
-            sessionFinalRef.current +
-            ' ' +
-            interimTranscriptRef.current
-          ).trim()
-          submitUserMessage(fullSaid, 'voice')
-        } else if (isListeningIntentRef.current) {
-          // 浏览器因为静音自动触发 onend，但用户仍在意向聆听中，平滑续接
-          accumulatedPreviousFinalRef.current += sessionFinalRef.current
-          sessionFinalRef.current = ''
-          interimTranscriptRef.current = ''
-          if (restartTimerRef.current !== null) {
-            window.clearTimeout(restartTimerRef.current)
-          }
-          restartTimerRef.current = window.setTimeout(() => {
-            if (isListeningIntentRef.current && !isUserStoppingVoiceRef.current) {
-              startRecognitionSession()
-            }
-          }, 50)
-        } else {
-          // 停止聆听：保留输入框中已识别的内容供用户确认修改与手动发送
-          setStatus('idle')
-          setVoiceInputState('idle')
-          setLiveVoiceText('')
-        }
-      }
-
-      rec.start()
-      chatRecognitionRef.current = rec
-    } catch (err: any) {
-      console.warn('SpeechRecognition start failed:', err)
-      showVoiceToast('启动语音识别失败，请检查浏览器权限或输入文字')
+    const finalSaid = (recResult.transcript?.trim() || text.trim())
+    if (finalSaid) {
+      submitUserMessage(finalSaid, 'voice')
+    } else if (recResult.audioBlob && recResult.audioBlob.size > 0) {
+      showVoiceToast('已收到你的语音倾诉，声音有些轻柔 🍃')
+      submitUserMessage('（语音倾诉）', 'voice')
+    } else {
+      showVoiceToast('没有识别到语音，请再试一次 🍃')
       setStatus('idle')
       setVoiceInputState('idle')
       setLiveVoiceText('')
-      isListeningIntentRef.current = false
     }
-  }, [submitUserMessage])
+  }, [submitUserMessage, text])
+
+  // 开启真实麦克风授权与录音会话
+  const startVoiceRecording = useCallback(async () => {
+    // 1. 中断任何正在播放的 AI 回复或声音
+    abortControllerRef.current?.abort()
+    assistantAudioService.stopAssistantAudio()
+    activeVoicePlaybackRef.current?.stop()
+    stopSpeaking()
+    isVoicePlayingRef.current = false
+    setIsAudioPlaying(false)
+    setPreviewingVoice(null)
+    setCurrentPlayingVoice(null)
+    setMicError(null)
+
+    // 2. 清理先前的状态
+    releaseAllAudioResources()
+    setLiveVoiceText('')
+    setRecordingSeconds(0)
+
+    // 3. 真实通过统一采集服务请求麦克风并启动跨平台录音
+    const res = await voiceCaptureService.start({
+      onStatusChange: (newStatus) => {
+        if (newStatus === 'recording') {
+          setStatus('listening')
+          setVoiceInputState('listening')
+        } else if (newStatus === 'idle') {
+          setVoiceInputState('idle')
+        }
+      },
+      onVolumeChange: (vol) => {
+        setLiveVolume(vol)
+      },
+      onInterimTranscript: (_interim, accumulated) => {
+        setLiveVoiceText(accumulated)
+        if (accumulated) {
+          setVoiceInputState('recognizing')
+          setText(accumulated)
+        }
+      },
+      onError: (err) => {
+        setMicError(err)
+        setStatus('idle')
+        setVoiceInputState('idle')
+      },
+    })
+
+    if (!res.success) {
+      if (res.error) {
+        setMicError(res.error)
+      }
+      setStatus('idle')
+      setVoiceInputState('idle')
+      return
+    }
+
+    // 启动录音计时器
+    const timer = window.setInterval(() => {
+      setRecordingSeconds((prev) => prev + 1)
+    }, 1000)
+    recordingTimerRef.current = timer
+  }, [releaseAllAudioResources, stopSpeaking])
 
   // 文字消息点击发送或回车：统一进入 submitUserMessage
   function send() {
@@ -1403,57 +1327,13 @@ function Chat({
   // Handle Voice button toggle
   function toggleVoice() {
     if (status === 'listening' || voiceInputState === 'listening' || voiceInputState === 'recognizing') {
-      // 用户点击「点击完成」：完成语音输入并自动提交进入统一提交流程
-      isUserStoppingVoiceRef.current = true
-      isListeningIntentRef.current = false
-      stopVoiceRecognition()
-
-      // 容错兜底：若 onend 在 260ms 内未及时触发，直接以累计文本提交
-      window.setTimeout(() => {
-        if (!isSubmittingRef.current) {
-          const fullText = (
-            accumulatedPreviousFinalRef.current +
-            sessionFinalRef.current +
-            ' ' +
-            interimTranscriptRef.current
-          ).trim()
-          if (fullText) {
-            submitUserMessage(fullText, 'voice')
-          }
-        }
-      }, 260)
+      // 处于录音状态时，用户再次点击代表完成倾诉，停止录音并提交
+      stopVoiceRecordingAndSubmit()
       return
     }
 
-    // 1. 检查浏览器支持
-    const SpeechRecognition =
-      (typeof window !== 'undefined' &&
-        ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition)) ||
-      null
-
-    if (!SpeechRecognition) {
-      showVoiceToast('当前浏览器暂不支持语音识别，请直接在下方输入文字交流 🍃')
-      return
-    }
-
-    // 2. 中断任何正在播放的 AI 回复或声音
-    abortControllerRef.current?.abort()
-    activeVoicePlaybackRef.current?.stop()
-    stopSpeaking()
-    isVoicePlayingRef.current = false
-    setPreviewingVoice(null)
-    setCurrentPlayingVoice(null)
-
-    // 3. 重置语音会话追踪
-    accumulatedPreviousFinalRef.current = ''
-    sessionFinalRef.current = ''
-    interimTranscriptRef.current = ''
-    isUserStoppingVoiceRef.current = false
-    isListeningIntentRef.current = true
-    setLiveVoiceText('')
-    setSeconds(0)
-
-    startRecognitionSession()
+    // 未在录音状态时，点击按钮启动真实麦克风授权与录音
+    startVoiceRecording()
   }
 
   // 严格动画联动：只有在生成中、流式输出中或真实语音播放中，且无错误时，才触发 talking
@@ -1476,18 +1356,7 @@ function Chat({
   const assistantCount = displayList.filter((d) => d.role === 'assistant').length
 
   function handleEndConversation() {
-    isListeningIntentRef.current = false
-    isUserStoppingVoiceRef.current = false
-    if (restartTimerRef.current !== null) {
-      window.clearTimeout(restartTimerRef.current)
-      restartTimerRef.current = null
-    }
-    if (chatRecognitionRef.current) {
-      try {
-        chatRecognitionRef.current.abort()
-      } catch {}
-      chatRecognitionRef.current = null
-    }
+    releaseAllAudioResources()
     abortControllerRef.current?.abort()
     assistantAudioService.stopAssistantAudio()
     activeVoicePlaybackRef.current?.stop()
@@ -1509,18 +1378,7 @@ function Chat({
     <main className="screen chat-screen">
       <BackButton
         onClick={() => {
-          isListeningIntentRef.current = false
-          isUserStoppingVoiceRef.current = false
-          if (restartTimerRef.current !== null) {
-            window.clearTimeout(restartTimerRef.current)
-            restartTimerRef.current = null
-          }
-          if (chatRecognitionRef.current) {
-            try {
-              chatRecognitionRef.current.abort()
-            } catch {}
-            chatRecognitionRef.current = null
-          }
+          releaseAllAudioResources()
           abortControllerRef.current?.abort()
           assistantAudioService.stopAssistantAudio()
           activeVoicePlaybackRef.current?.stop()
@@ -1546,26 +1404,6 @@ function Chat({
         </div>
       )}
       <div className="chat-actions">
-        <button
-          type="button"
-          onClick={() => {
-            const nextMode = audioInputMode === 'browser_stt' ? 'backend_audio' : 'browser_stt'
-            setAudioInputModeState(nextMode)
-            setAudioInputMode(nextMode)
-            showVoiceToast(
-              nextMode === 'browser_stt'
-                ? '已启用方案 A：浏览器端本地识别为文本后请求 🍃'
-                : '已切换为方案 B：预留麦克风音频直传多模态后端 🎙️'
-            )
-          }}
-          title={
-            audioInputMode === 'browser_stt'
-              ? '当前为方案 A（前端转写为文本），点击可切换为方案 B（音频直传接口预留）'
-              : '当前为方案 B（音频直传接口预留），点击切回方案 A'
-          }
-        >
-          {audioInputMode === 'browser_stt' ? '方案 A: 语音转写' : '方案 B: 音频直传(预留)'}
-        </button>
         <button aria-label="字号">
           <Icon name="type" size={18} />
         </button>
@@ -1689,8 +1527,15 @@ function Chat({
           <div className="live-speech-content">
             <div className="live-speech-header">
               <span className="live-speech-tag">
-                <span className="live-pulse-dot" /> 正在聆听中...
+                <span className="live-pulse-dot" /> 正在聆听中... ({Math.floor(recordingSeconds / 60).toString().padStart(2, '0')}:{(recordingSeconds % 60).toString().padStart(2, '0')})
               </span>
+              <div className="live-speech-volume-wrap" title={`当前收音音量: ${liveVolume}%`}>
+                <span className="live-speech-vol-bar" style={{ height: `${Math.max(4, Math.round(liveVolume * 0.18))}px` }} />
+                <span className="live-speech-vol-bar" style={{ height: `${Math.max(4, Math.round(liveVolume * 0.24))}px` }} />
+                <span className="live-speech-vol-bar" style={{ height: `${Math.max(4, Math.round(liveVolume * 0.16))}px` }} />
+                <span className="live-speech-vol-bar" style={{ height: `${Math.max(4, Math.round(liveVolume * 0.22))}px` }} />
+                <span className="live-speech-vol-bar" style={{ height: `${Math.max(4, Math.round(liveVolume * 0.14))}px` }} />
+              </div>
               <button
                 type="button"
                 className="live-speech-cancel-btn"
@@ -1707,7 +1552,7 @@ function Chat({
               {liveVoiceText ? (
                 <span>{liveVoiceText}</span>
               ) : (
-                <span className="live-speech-placeholder">轻声说出你的心事，小安在听...</span>
+                <span className="live-speech-placeholder">轻声说出你的心事，小安在听...（可直接说话，完成后点击“点击完成”）</span>
               )}
             </div>
           </div>
@@ -1867,27 +1712,25 @@ function Chat({
           </div>
         </div>
       )}
+
+      {micError && (
+        <MicrophonePermissionModal
+          error={micError}
+          onClose={() => setMicError(null)}
+          onRetry={async () => {
+            setMicError(null)
+            await startVoiceRecording()
+          }}
+          onSwitchToText={() => {
+            setMicError(null)
+            const inputEl = document.querySelector('.chat-input-area input') as HTMLInputElement | null
+            inputEl?.focus()
+          }}
+        />
+      )}
     </main>
   )
 }
-
-const VOICE_SAMPLES = [
-  { text: '哈哈哈，今天遇到特别好笑的事！', category: '开心' },
-  { text: '太好了，终于成功了，好开心！', category: '开心' },
-  { text: '嘿嘿，今天收到了一束花。', category: '开心' },
-  { text: '我今天很难过，心情很沉重。', category: '难过' },
-  { text: '我很焦虑，不知道怎么办才好。', category: '焦虑' },
-  { text: '气死我了，真的很生气！', category: '生气' },
-  { text: '虽然很难过，但大家都在帮我，我挺开心的。', category: '转折/开心' },
-  { text: '虽然成功了，但我其实很难过。', category: '转折/难过' },
-  { text: '哈哈哈，我真的快崩溃了。', category: '苦笑/崩溃' },
-  { text: '我难过得都笑了。', category: '复合情绪' },
-  { text: '我一点也不开心。', category: '否定反转' },
-  { text: '你可真厉害，呵呵。', category: '反讽/无奈' },
-  { text: '今天晚上我在写数学作业。', category: '中性客观' },
-  { text: '嗯，好的，我知道了。', category: '日常中性' },
-  { text: '呵呵。', category: '歧义/不明确' },
-]
 
 function MessageComposer({
   onSend,
@@ -1898,9 +1741,23 @@ function MessageComposer({
 }) {
   const [text, setText] = useState('')
   const [isListening, setIsListening] = useState(false)
-  const [showVoiceModal, setShowVoiceModal] = useState(false)
-  const [customVoiceInput, setCustomVoiceInput] = useState('')
-  const recognitionRef = useRef<any>(null)
+  const [micError, setMicError] = useState<MicrophoneErrorInfo | null>(null)
+
+  const stopActiveRecording = useCallback(async () => {
+    setIsListening(false)
+    const res = await voiceCaptureService.stop()
+    const finalVal = res.transcript?.trim() || text.trim()
+    if (finalVal) {
+      onSend(finalVal, 'voice')
+      setText('')
+    }
+  }, [onSend, text])
+
+  useEffect(() => {
+    return () => {
+      voiceCaptureService.release()
+    }
+  }, [])
 
   function sendText() {
     if (!text.trim()) return
@@ -1908,64 +1765,35 @@ function MessageComposer({
     setText('')
   }
 
+  async function startRecording() {
+    setMicError(null)
+    setIsListening(true)
+    const res = await voiceCaptureService.start({
+      onInterimTranscript: (_interim, accumulated) => {
+        setText(accumulated)
+      },
+      onError: (err) => {
+        setMicError(err)
+        setIsListening(false)
+      },
+      onStatusChange: (status) => {
+        if (status === 'idle') {
+          setIsListening(false)
+        }
+      },
+    })
+    if (!res.success) {
+      if (res.error) setMicError(res.error)
+      setIsListening(false)
+    }
+  }
+
   function toggleVoice() {
     if (isListening) {
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop()
-        } catch {}
-      }
-      setIsListening(false)
+      stopActiveRecording()
       return
     }
-
-    const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-
-    if (!SpeechRecognition) {
-      setShowVoiceModal(true)
-      return
-    }
-
-    try {
-      const rec = new SpeechRecognition()
-      rec.lang = 'zh-CN'
-      rec.continuous = false
-      rec.interimResults = true
-
-      rec.onstart = () => {
-        setIsListening(true)
-      }
-
-      rec.onresult = (e: any) => {
-        const transcript = Array.from(e.results)
-          .map((r: any) => r[0].transcript)
-          .join('')
-        setText(transcript)
-      }
-
-      rec.onend = () => {
-        setIsListening(false)
-        setText((current) => {
-          if (current.trim()) {
-            onSend(current.trim(), 'voice')
-          }
-          return ''
-        })
-      }
-
-      rec.onerror = (err: any) => {
-        console.warn('Speech recognition error, opening voice sample modal:', err)
-        setIsListening(false)
-        setShowVoiceModal(true)
-      }
-
-      rec.start()
-      recognitionRef.current = rec
-    } catch (err) {
-      console.warn('Speech recognition start failed:', err)
-      setShowVoiceModal(true)
-    }
+    startRecording()
   }
 
   return (
@@ -1976,7 +1804,7 @@ function MessageComposer({
             type="button"
             className={`speak-button ${isListening ? 'listening' : ''}`}
             onClick={toggleVoice}
-            title={isListening ? '点击结束语音识别' : '点我说话（支持真实麦克风或语音模拟）'}
+            title={isListening ? '点击完成倾诉' : '点我说话'}
           >
             <i />
             {isListening ? '正在倾听...（点击完成）' : '点我说话'}
@@ -1995,68 +1823,20 @@ function MessageComposer({
         </div>
       </div>
 
-      {showVoiceModal && (
-        <div className="voice-picker-overlay" onClick={() => setShowVoiceModal(false)}>
-          <div className="voice-picker-card" onClick={(e) => e.stopPropagation()}>
-            <div className="voice-picker-header">
-              <h3>
-                <span>🎙️</span> 语音输入与测试专区
-              </h3>
-              <button
-                type="button"
-                className="voice-picker-close"
-                onClick={() => setShowVoiceModal(false)}
-              >
-                ✕
-              </button>
-            </div>
-            <p className="voice-picker-desc">
-              你可以直接选择以下常见的语音录音表达，也可以输入你的自定义语音文字，以语音通道传入情绪分析引擎：
-            </p>
-            <div className="voice-picker-grid">
-              {VOICE_SAMPLES.map((sample, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  className="voice-sample-btn"
-                  onClick={() => {
-                    onSend(sample.text, 'voice')
-                    setShowVoiceModal(false)
-                  }}
-                >
-                  <span className="voice-sample-text">“{sample.text}”</span>
-                  <span className="voice-sample-badge mood-平静">{sample.category}</span>
-                </button>
-              ))}
-            </div>
-            <div className="voice-picker-custom">
-              <input
-                value={customVoiceInput}
-                onChange={(e) => setCustomVoiceInput(e.target.value)}
-                placeholder="或输入自定义语音转换文本..."
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && customVoiceInput.trim()) {
-                    onSend(customVoiceInput.trim(), 'voice')
-                    setCustomVoiceInput('')
-                    setShowVoiceModal(false)
-                  }
-                }}
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  if (customVoiceInput.trim()) {
-                    onSend(customVoiceInput.trim(), 'voice')
-                    setCustomVoiceInput('')
-                    setShowVoiceModal(false)
-                  }
-                }}
-              >
-                以语音发送
-              </button>
-            </div>
-          </div>
-        </div>
+      {micError && (
+        <MicrophonePermissionModal
+          error={micError}
+          onClose={() => setMicError(null)}
+          onRetry={async () => {
+            setMicError(null)
+            await startRecording()
+          }}
+          onSwitchToText={() => {
+            setMicError(null)
+            const inputEl = document.querySelector('.analysis-composer input') as HTMLInputElement | null
+            inputEl?.focus()
+          }}
+        />
       )}
     </>
   )

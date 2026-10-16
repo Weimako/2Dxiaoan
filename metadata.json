@@ -1,7 +1,9 @@
 {
   "name": "安心健康 (Xiaoan Health)",
   "description": "心理健康与情绪疗愈陪伴平台，提供心理测评、能量工具、深度疗愈对话与身心舒缓练习。",
-  "requestFramePermissions": [],
+  "requestFramePermissions": [
+    "microphone"
+  ],
   "capabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ]
